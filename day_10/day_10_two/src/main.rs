@@ -19,25 +19,6 @@ fn main() {
     println!("surface: {}", surface);
 }
 
-fn shoot(location: (usize, usize), direction: Direction, notes: &mut Vec<Vec<char>>) -> () {
-    let mut location = location;
-    loop {
-        if direction == Direction::North {
-            location.0 += 1;
-        } else if direction == Direction::East {
-            location.1 += 1;
-        } else if direction == Direction::South {
-            location.0 -= 1;
-        } else if direction == Direction::West {
-            location.1 -= 1;
-        }
-        if notes[location.1][location.0] == 'x' {
-            break;
-        }
-        mark(notes, location, 'M');
-    }
-}
-
 fn p(field: &Vec<Vec<char>>) -> () {
     for row in field {
         for c in row {
@@ -78,11 +59,12 @@ fn find_loop_surface(field: &Vec<Vec<char>>, notes: &mut Vec<Vec<char>>) -> usiz
         p(&field);
         p(&notes);
         double_time(field, (x, y + 1), Direction::South, notes);
-    } else if WEST.contains(&field[y][x - 1]) {
+    }
+    if WEST.contains(&field[y][x - 1]) {
         _ = walk(field, (x - 1, y), Direction::West, notes);
         p(&field);
         p(&notes);
-        double_time(field, (x - 1, y), Direction::West, notes);
+        double_time_left(field, (x - 1, y), Direction::West, notes);
     }
 
     let total = count_marks(notes);
@@ -113,12 +95,36 @@ fn double_time(
         location, direction
     );
     let mut agent = Agent::new(direction, location);
+    agent.clone().shoot_right(notes);
     let (mut x, mut y) = agent.location();
     while field[y][x] != 'S' {
         mark(notes, (x, y), 'x');
         println!("location: x: {}, y: {}, pipe: {}", x, y, field[y][x]);
-        agent.crawl_and_shoot(field[y][x], notes);
+        agent.crawl(field[y][x]);
         (x, y) = agent.location();
+        agent.clone().shoot_right(notes);
+    }
+}
+
+fn double_time_left(
+    field: &Vec<Vec<char>>,
+    location: (usize, usize),
+    direction: Direction,
+    notes: &mut Vec<Vec<char>>,
+) -> () {
+    println!(
+        "starting at: {:?} with direction: {:?}",
+        location, direction
+    );
+    let mut agent = Agent::new(direction, location);
+    agent.clone().shoot_left(notes);
+    let (mut x, mut y) = agent.location();
+    while field[y][x] != 'S' {
+        mark(notes, (x, y), 'x');
+        println!("location: x: {}, y: {}, pipe: {}", x, y, field[y][x]);
+        agent.crawl(field[y][x]);
+        (x, y) = agent.location();
+        agent.clone().shoot_left(notes);
     }
 }
 
@@ -175,79 +181,39 @@ impl Agent {
         self.location
     }
 
-    fn crawl_and_shoot(&mut self, pipe: char, notes: &mut Vec<Vec<char>>) -> () {
-        match pipe {
-            '|' => {
-                if self.direction == Direction::North {
-                    shoot(self.location, Direction::East, notes);
-                    self.location.1 -= 1;
-                } else {
-                    shoot(self.location, Direction::West, notes);
-                    self.location.1 += 1;
-                }
+    fn shoot_right(&mut self, notes: &mut Vec<Vec<char>>) -> () {
+        loop {
+            if self.direction == Direction::North {
+                self.location.0 += 1;
+            } else if self.direction == Direction::East {
+                self.location.1 += 1;
+            } else if self.direction == Direction::South {
+                self.location.0 -= 1;
+            } else if self.direction == Direction::West {
+                self.location.1 -= 1;
             }
-            '-' => {
-                if self.direction == Direction::East {
-                    shoot(self.location, Direction::South, notes);
-                    self.location.0 += 1;
-                } else {
-                    shoot(self.location, Direction::North, notes);
-                    self.location.0 -= 1;
-                }
+            if notes[self.location.1][self.location.0] == 'x' {
+                break;
             }
-            'L' => {
-                if self.direction == Direction::West {
-                    shoot(self.location, Direction::North, notes);
-                    shoot(self.location, Direction::East, notes);
-                    self.direction = Direction::North;
-                    self.location.1 -= 1;
-                } else {
-                    shoot(self.location, Direction::South, notes);
-                    shoot(self.location, Direction::West, notes);
-                    self.direction = Direction::East;
-                    self.location.0 += 1;
-                }
+            mark(notes, self.location, 'M');
+        }
+    }
+
+    fn shoot_left(&mut self, notes: &mut Vec<Vec<char>>) -> () {
+        loop {
+            if self.direction == Direction::North {
+                self.location.0 -= 1;
+            } else if self.direction == Direction::East {
+                self.location.1 -= 1;
+            } else if self.direction == Direction::South {
+                self.location.0 += 1;
+            } else if self.direction == Direction::West {
+                self.location.1 += 1;
             }
-            'J' => {
-                if self.direction == Direction::East {
-                    shoot(self.location, Direction::North, notes);
-                    shoot(self.location, Direction::West, notes);
-                    self.direction = Direction::North;
-                    self.location.1 -= 1;
-                } else {
-                    shoot(self.location, Direction::South, notes);
-                    shoot(self.location, Direction::East, notes);
-                    self.direction = Direction::West;
-                    self.location.0 -= 1;
-                }
+            if notes[self.location.1][self.location.0] == 'x' {
+                break;
             }
-            '7' => {
-                if self.direction == Direction::East {
-                    shoot(self.location, Direction::South, notes);
-                    shoot(self.location, Direction::West, notes);
-                    self.direction = Direction::South;
-                    self.location.1 += 1;
-                } else {
-                    shoot(self.location, Direction::North, notes);
-                    shoot(self.location, Direction::East, notes);
-                    self.direction = Direction::West;
-                    self.location.0 -= 1;
-                }
-            }
-            'F' => {
-                if self.direction == Direction::North {
-                    shoot(self.location, Direction::East, notes);
-                    shoot(self.location, Direction::South, notes);
-                    self.direction = Direction::East;
-                    self.location.0 += 1;
-                } else {
-                    shoot(self.location, Direction::North, notes);
-                    shoot(self.location, Direction::West, notes);
-                    self.direction = Direction::South;
-                    self.location.1 += 1;
-                }
-            }
-            _ => {}
+            mark(notes, self.location, 'M');
         }
     }
 
