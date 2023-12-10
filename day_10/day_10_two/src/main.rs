@@ -7,18 +7,35 @@ static WEST: [char; 3] = ['-', 'L', 'F'];
 static SOUTH: [char; 3] = ['|', 'J', 'L'];
 
 fn main() {
-    let file = File::open("test").unwrap();
+    let file = File::open("input").unwrap();
     let lines = BufReader::new(file).lines();
 
     let field = read_field(lines);
     let mut notes = field.clone();
     empty_notes(&mut notes);
+    let surface = find_loop_surface(&field, &mut notes);
     p(&field);
-    let distance = find_longest_distance_in_field(field, &mut notes);
-    println!("distance: {}", distance);
-    let interior = get_interior(&mut notes);
     p(&notes);
-    println!("{}", interior);
+    println!("surface: {}", surface);
+}
+
+fn shoot(location: (usize, usize), direction: Direction, notes: &mut Vec<Vec<char>>) -> () {
+    let mut location = location;
+    loop {
+        if direction == Direction::North {
+            location.0 += 1;
+        } else if direction == Direction::East {
+            location.1 += 1;
+        } else if direction == Direction::South {
+            location.0 -= 1;
+        } else if direction == Direction::West {
+            location.1 -= 1;
+        }
+        if notes[location.1][location.0] == 'x' {
+            break;
+        }
+        mark(notes, location, 'M');
+    }
 }
 
 fn p(field: &Vec<Vec<char>>) -> () {
@@ -30,33 +47,6 @@ fn p(field: &Vec<Vec<char>>) -> () {
     }
 }
 
-fn get_interior(notes: &mut Vec<Vec<char>>) -> usize {
-    let mut total = 0;
-    for row in notes {
-        let mut counting = false;
-        let mut counter = 0;
-        for c in row {
-            if *c == 'x' && counting && counter > 0 {
-                total += counter;
-                counter = 0;
-                counting = false;
-                continue;
-            } else if *c == 'x' && counting {
-                continue;
-            } else if *c == 'x' && !counting {
-                counting = true;
-                counter = 0;
-                continue;
-            }
-            if counting {
-                counter += 1;
-                *c = 'I';
-            }
-        }
-    }
-    return total;
-}
-
 fn empty_notes(notes: &mut Vec<Vec<char>>) -> () {
     for y in 0..notes.len() {
         for x in 0..notes[y].len() {
@@ -65,48 +55,95 @@ fn empty_notes(notes: &mut Vec<Vec<char>>) -> () {
     }
 }
 
-fn mark(notes: &mut Vec<Vec<char>>, (x, y): (usize, usize)) -> () {
-    notes[y][x] = 'x';
+fn mark(notes: &mut Vec<Vec<char>>, (x, y): (usize, usize), marker: char) -> () {
+    notes[y][x] = marker;
 }
 
-fn find_longest_distance_in_field(field: Vec<Vec<char>>, notes: &mut Vec<Vec<char>>) -> usize {
+fn find_loop_surface(field: &Vec<Vec<char>>, notes: &mut Vec<Vec<char>>) -> usize {
     let (x, y) = find_location(field.clone());
-    mark(notes, (x, y));
+    mark(notes, (x, y), 'x');
 
-    let mut distance = 0;
     if NORTH.contains(&field[y - 1][x]) {
-        distance = walk(field, (x, y - 1), Direction::North, notes);
-    } else if SOUTH.contains(&field[y + 1][x]) {
-        distance = walk(field, (x, y + 1), Direction::South, notes);
+        _ = walk(field, (x, y - 1), Direction::North, notes);
+        p(&field);
+        p(&notes);
+        double_time(field, (x, y - 1), Direction::North, notes);
     } else if EAST.contains(&field[y][x + 1]) {
-        distance = walk(field, (x + 1, y), Direction::East, notes);
+        _ = walk(field, (x + 1, y), Direction::East, notes);
+        p(&field);
+        p(&notes);
+        double_time(field, (x + 1, y), Direction::East, notes);
+    } else if SOUTH.contains(&field[y + 1][x]) {
+        _ = walk(field, (x, y + 1), Direction::South, notes);
+        p(&field);
+        p(&notes);
+        double_time(field, (x, y + 1), Direction::South, notes);
     } else if WEST.contains(&field[y][x - 1]) {
-        distance = walk(field, (x - 1, y), Direction::West, notes);
+        _ = walk(field, (x - 1, y), Direction::West, notes);
+        p(&field);
+        p(&notes);
+        double_time(field, (x - 1, y), Direction::West, notes);
     }
-    return distance;
+
+    let total = count_marks(notes);
+
+    return total;
 }
 
-fn walk(
-    field: Vec<Vec<char>>,
+fn count_marks(notes: &mut Vec<Vec<char>>) -> usize {
+    let mut counter = 0;
+    for row in notes {
+        for c in row {
+            if *c == 'M' {
+                counter += 1;
+            }
+        }
+    }
+    return counter;
+}
+
+fn double_time(
+    field: &Vec<Vec<char>>,
     location: (usize, usize),
     direction: Direction,
     notes: &mut Vec<Vec<char>>,
-) -> usize {
+) -> () {
     println!(
         "starting at: {:?} with direction: {:?}",
         location, direction
     );
     let mut agent = Agent::new(direction, location);
-    let mut distance = 1;
     let (mut x, mut y) = agent.location();
     while field[y][x] != 'S' {
-        mark(notes, (x, y));
+        mark(notes, (x, y), 'x');
+        println!("location: x: {}, y: {}, pipe: {}", x, y, field[y][x]);
+        agent.crawl_and_shoot(field[y][x], notes);
+        (x, y) = agent.location();
+    }
+}
+
+fn walk(
+    field: &Vec<Vec<char>>,
+    location: (usize, usize),
+    direction: Direction,
+    notes: &mut Vec<Vec<char>>,
+) -> Vec<(usize, usize)> {
+    println!(
+        "starting at: {:?} with direction: {:?}",
+        location, direction
+    );
+    let mut agent = Agent::new(direction, location);
+    let mut locations = Vec::new();
+    let (mut x, mut y) = agent.location();
+    locations.push((x, y));
+    while field[y][x] != 'S' {
+        mark(notes, (x, y), 'x');
         println!("location: x: {}, y: {}, pipe: {}", x, y, field[y][x]);
         agent.crawl(field[y][x]);
         (x, y) = agent.location();
-        distance += 1;
+        locations.push((x, y));
     }
-    return distance;
+    return locations;
 }
 
 fn find_location(field: Vec<Vec<char>>) -> (usize, usize) {
@@ -120,6 +157,7 @@ fn find_location(field: Vec<Vec<char>>) -> (usize, usize) {
     return (0, 0);
 }
 
+#[derive(Debug, Clone)]
 struct Agent {
     direction: Direction,
     location: (usize, usize),
@@ -135,6 +173,82 @@ impl Agent {
 
     fn location(&self) -> (usize, usize) {
         self.location
+    }
+
+    fn crawl_and_shoot(&mut self, pipe: char, notes: &mut Vec<Vec<char>>) -> () {
+        match pipe {
+            '|' => {
+                if self.direction == Direction::North {
+                    shoot(self.location, Direction::East, notes);
+                    self.location.1 -= 1;
+                } else {
+                    shoot(self.location, Direction::West, notes);
+                    self.location.1 += 1;
+                }
+            }
+            '-' => {
+                if self.direction == Direction::East {
+                    shoot(self.location, Direction::South, notes);
+                    self.location.0 += 1;
+                } else {
+                    shoot(self.location, Direction::North, notes);
+                    self.location.0 -= 1;
+                }
+            }
+            'L' => {
+                if self.direction == Direction::West {
+                    shoot(self.location, Direction::North, notes);
+                    shoot(self.location, Direction::East, notes);
+                    self.direction = Direction::North;
+                    self.location.1 -= 1;
+                } else {
+                    shoot(self.location, Direction::South, notes);
+                    shoot(self.location, Direction::West, notes);
+                    self.direction = Direction::East;
+                    self.location.0 += 1;
+                }
+            }
+            'J' => {
+                if self.direction == Direction::East {
+                    shoot(self.location, Direction::North, notes);
+                    shoot(self.location, Direction::West, notes);
+                    self.direction = Direction::North;
+                    self.location.1 -= 1;
+                } else {
+                    shoot(self.location, Direction::South, notes);
+                    shoot(self.location, Direction::East, notes);
+                    self.direction = Direction::West;
+                    self.location.0 -= 1;
+                }
+            }
+            '7' => {
+                if self.direction == Direction::East {
+                    shoot(self.location, Direction::South, notes);
+                    shoot(self.location, Direction::West, notes);
+                    self.direction = Direction::South;
+                    self.location.1 += 1;
+                } else {
+                    shoot(self.location, Direction::North, notes);
+                    shoot(self.location, Direction::East, notes);
+                    self.direction = Direction::West;
+                    self.location.0 -= 1;
+                }
+            }
+            'F' => {
+                if self.direction == Direction::North {
+                    shoot(self.location, Direction::East, notes);
+                    shoot(self.location, Direction::South, notes);
+                    self.direction = Direction::East;
+                    self.location.0 += 1;
+                } else {
+                    shoot(self.location, Direction::North, notes);
+                    shoot(self.location, Direction::West, notes);
+                    self.direction = Direction::South;
+                    self.location.1 += 1;
+                }
+            }
+            _ => {}
+        }
     }
 
     fn crawl(&mut self, pipe: char) -> () {
@@ -210,7 +324,7 @@ fn read_line(line: String) -> Vec<char> {
     line.chars().collect()
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 enum Direction {
     North,
     East,
